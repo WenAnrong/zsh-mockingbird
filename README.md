@@ -11,7 +11,7 @@
 
 - 🧠 **AI 嘲讽**：兼容 OpenAI 格式的 LLM API（DeepSeek / 阿里云百炼 Qwen / Moonshot 等均可）
 - 🗣️ **三种人设**：`sarcastic` 阴阳怪气（默认）/ `angry` 祖安暴躁 / `tsundere` 傲娇
-- ⚡ **零阻塞**：默认后台异步执行，嘲讽稍后送达，绝不卡住你的终端
+- ⚡ **同步执行**：嘲讽直接出现在提示符之前
 - 🚫 **零依赖**：`mock.py` 仅用 Python 3 标准库（`urllib.request`），**不需要** `pip install openai`
 - 🔒 **永不报错**：请求超时（默认 3 秒）/ 断网 / 未配置 Key 时，静默回退到本地 5 条毒舌语录
 - 🎨 **彩色渲染**：ANSI 转义码输出（红色标头 + 黄色正文 + 青色建议）
@@ -28,7 +28,7 @@
 [触发 Zsh 钩子: command_not_found_handler]
         │
         ▼
-[后台异步调用 mock.py（不阻塞终端）]
+[同步调用 mock.py（嘲讽先于提示符渲染）]
         │
         ├── 1. 传入：错误命令、参数、当前目录
         ├── 2. 发起 OpenAI 兼容 HTTP POST（3 秒超时 / 可选 SSE 流式）
@@ -54,15 +54,12 @@ zsh-mockingbird/
 
 ## 🚀 安装
 
-> 插件**不会**自动改动你的 `~/.zshrc`，装好之后由你自己手动加入 `plugins=()`，一切尽在掌握。
-
 ### 方式一：git clone 安装（推荐，Oh My Zsh）
 
 直接克隆到自定义插件目录：
 
 ```bash
-git clone https://github.com/WenAnrong/zsh-mockingbird.git \
-  ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-mockingbird
+git clone https://github.com/WenAnrong/zsh-mockingbird.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-mockingbird
 ```
 
 然后编辑 `~/.zshrc`，在 `plugins=(...)` 数组中手动加入 `zsh-mockingbird`：
@@ -81,6 +78,7 @@ source ~/.zshrc
 
 ```bash
 mkdir -p ~/.oh-my-zsh/custom/plugins/zsh-mockingbird
+
 cp zsh-mockingbird.plugin.zsh mock.py config.env.example ~/.oh-my-zsh/custom/plugins/zsh-mockingbird/
 ```
 
@@ -111,37 +109,11 @@ vim config.env
 | 变量 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `MOCKINGBIRD_API_KEY` | ✅ | （空） | 大模型 API Key（OpenAI 兼容格式） |
-| `MOCKINGBIRD_BASE_URL` | ❌ | `https://api.deepseek.com` | API 地址，会自动拼接 `/chat/completions` |
-| `MOCKINGBIRD_MODEL` | ❌ | `deepseek-chat` | 模型名称 |
+| `MOCKINGBIRD_API_URL` | ✅ | （空） | API 完整地址（必填，脚本不拼接） |
+| `MOCKINGBIRD_MODEL` | ✅ |（空） | 模型名称 |
 | `MOCKINGBIRD_TONE` | ❌ | `sarcastic` | 人设：`sarcastic` / `angry` / `tsundere` |
 | `MOCKINGBIRD_STREAM` | ❌ | `0` | `1` 开启 SSE 流式输出 |
 | `MOCKINGBIRD_TIMEOUT` | ❌ | `3.0` | 请求超时（秒），超过即本地兜底 |
-
-### 各家模型示例
-
-**DeepSeek**
-
-```bash
-MOCKINGBIRD_API_KEY="sk-xxxx"
-MOCKINGBIRD_BASE_URL="https://api.deepseek.com"
-MOCKINGBIRD_MODEL="deepseek-chat"
-```
-
-**阿里云百炼（Qwen）**
-
-```bash
-MOCKINGBIRD_API_KEY="sk-xxxx"
-MOCKINGBIRD_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
-MOCKINGBIRD_MODEL="qwen-plus"
-```
-
-**Moonshot（Kimi）**
-
-```bash
-MOCKINGBIRD_API_KEY="sk-xxxx"
-MOCKINGBIRD_BASE_URL="https://api.moonshot.cn/v1"
-MOCKINGBIRD_MODEL="moonshot-v1-8k"
-```
 
 配置完成后：
 
@@ -157,7 +129,6 @@ source ~/.zshrc
 
 ```bash
 $ sl
-zsh: command not found: sl
 [Mockingbird AI 警告]                    # 红色粗体
 `sl` 是什么新命令？你自己发明的吧，反正 Linux 不认识你。   # 黄色
 💡 你是不是想输入: ls?                    # 青色
@@ -165,12 +136,30 @@ zsh: command not found: sl
 
 > 未配置 API Key / 断网 / 超时的时候，插件会自动输出本地 5 条毒舌语录兜底，所以**永远能跑、永远不会崩**。
 
-### 进阶开关
+---
 
-在 `~/.zshrc` 中（插件加载前）可额外设置：
+## 🔄 更新插件
 
-```zsh
-export MOCKINGBIRD_ASYNC=0    # 0 = 同步等待 AI 回复（默认 1 = 后台异步，不阻塞终端）
+### git clone 安装（推荐）
+
+在插件目录里 `git pull` 即可：
+
+```bash
+cd ~/.oh-my-zsh/custom/plugins/zsh-mockingbird
+git pull
+source ~/.zshrc
+```
+
+> 本地生成的 `config.env` 已被 `.gitignore` 忽略，`git pull` 不会覆盖你的 API Key 配置。
+
+### 手动拷贝安装
+
+重新把仓库里的插件文件拷到插件目录覆盖旧文件，再 `source ~/.zshrc`：
+
+```bash
+cp zsh-mockingbird.plugin.zsh mock.py config.env.example \
+  ~/.oh-my-zsh/custom/plugins/zsh-mockingbird/
+source ~/.zshrc
 ```
 
 ---
@@ -181,16 +170,13 @@ export MOCKINGBIRD_ASYNC=0    # 0 = 同步等待 AI 回复（默认 1 = 后台�
 完全正常使用——`mock.py` 会静默走本地毒舌语录兜底，只是内容固定、没有"个性化嘲讽"。
 
 **Q：`python3` 没装怎么办？**
-插件会检测到缺少 `python3` 并直接按原样返回 `zsh: command not found`，不会报错。装上 Python 3 后即可体验。
+插件会检测到缺少 `python3` 并静默返回退出码 `127`（不会打印任何信息）。装上 Python 3 后即可体验。
 
 **Q：终端输出乱码 / 颜色失效？**
 请确认终端支持 ANSI 256 色（macOS 自带 Terminal / iTerm2 / VS Code 终端均支持）。
 
 **Q：和别的 `command_not_found_handler` 冲突？**
 本插件会覆盖已有处理器。如果同时装了其他同类插件，建议只保留一个。
-
-**Q：不想让嘲讽延迟出现？**
-把 `MOCKINGBIRD_ASYNC=0` 即可改为同步模式，AI 回复会先于提示符渲染完成。
 
 ---
 

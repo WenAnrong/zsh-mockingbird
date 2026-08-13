@@ -1,0 +1,6 @@
+# 用户本地配置，不入库（避免 git pull 时冲突/泄露 Key）
+config.env
+
+# Python 缓存
+__pycache__/
+*.pyc

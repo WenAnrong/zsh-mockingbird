@@ -2,26 +2,12 @@
 # -*- coding: utf-8 -*-
 """
 zsh-mockingbird / mock.py
-=========================
-
-当用户在 Zsh 中敲错命令时，由 zsh-mockingbird.plugin.zsh 调用本脚本：
-
-    1. 读取环境变量配置（兼容 OpenAI 格式的 LLM API）。
-    2. 带上"阴阳怪气" System Prompt，用 urllib.request 发起 HTTP POST。
-    3. 请求超时（默认 3 秒）/ 断网 / 未配置 Key 时，静默回退到本地 5 条毒舌语录。
-    4. 用 ANSI 转义码渲染彩色终端输出。
-
-零第三方依赖：仅使用 Python 3 标准库。
-
-用法：
-    python3 mock.py <错误的命令> [参数...]
 """
 
 import json
 import os
 import random
 import sys
-import urllib.error
 import urllib.request
 
 # --------------------------------------------------------------------------
@@ -45,8 +31,9 @@ def get_env(name, default=None):
 
 
 API_KEY = get_env("MOCKINGBIRD_API_KEY", "")
-BASE_URL = get_env("MOCKINGBIRD_BASE_URL", "https://api.deepseek.com").rstrip("/")
-MODEL = get_env("MOCKINGBIRD_MODEL", "deepseek-chat")
+# 完整请求地址
+API_URL = get_env("MOCKINGBIRD_API_URL", "").rstrip("/")
+MODEL = get_env("MOCKINGBIRD_MODEL", "")
 TONE = get_env("MOCKINGBIRD_TONE", "sarcastic")
 STREAM = get_env("MOCKINGBIRD_STREAM", "0") == "1"
 try:
@@ -131,8 +118,8 @@ def build_user_prompt(cmd, args, cwd):
 
 
 def call_api(messages):
-    """发起 OpenAI 兼容的 /chat/completions 请求，返回回复文本。"""
-    url = BASE_URL + "/chat/completions"
+    """发起 OpenAI 兼容的请求，返回回复文本。"""
+    url = API_URL
     payload = {
         "model": MODEL,
         "messages": messages,
@@ -216,8 +203,8 @@ def main(argv):
     args = list(argv[1:])
     cwd = os.environ.get("MOCKINGBIRD_CWD") or os.getcwd()
 
-    # 未配置 API Key：直接本地兜底，不打扰用户
-    if not API_KEY:
+    # 未配置 API Key 或完整地址：直接本地兜底，不打扰用户
+    if not API_KEY or not API_URL:
         body, suggestion = split_suggestion(fallback_quote(cmd))
         render(body, suggestion)
         return 0
