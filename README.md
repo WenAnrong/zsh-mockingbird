@@ -12,7 +12,7 @@
 - ⚡ **同步执行**：嘲讽直接出现在提示符之前
 - ⏳ **等待转圈**：调用 AI 时显示转圈动画（文案可配置），非 UTF-8 终端自动回退 ASCII
 - 🚫 **零依赖**：`mock.py` 仅用 Python 3 标准库（`urllib.request`）
-- 🔒 **永不报错**：请求超时（默认 3 秒）/ 断网 / 未配置 Key 时，静默回退到本地 5 条毒舌语录
+- 🔒 **永不报错**：请求超时（默认 6 秒）/ 断网 / 未配置 Key 时，静默回退到本地 5 条毒舌语录
 - 🎨 **彩色渲染**：ANSI 转义码输出（红色标头 + 黄色正文 + 青色建议）
 - 📦 **即插即用**：直接放进 Oh My Zsh `custom/plugins` 即可加载
 
@@ -30,7 +30,7 @@
 [同步调用 mock.py（嘲讽先于提示符渲染）]
         │
         ├── 1. 传入：错误命令、参数、当前目录
-        ├── 2. 发起 OpenAI 兼容 HTTP POST（3 秒超时）
+        ├── 2. 发起 OpenAI 兼容 HTTP POST（6 秒超时）
         └── 3. System Prompt 约束"阴阳怪气"人设
         │
         ▼
@@ -118,7 +118,8 @@ vim config.env
 | `MOCKINGBIRD_MODEL` | ✅ |（空） | 模型名称 |
 | `MOCKINGBIRD_TONE` | ❌ | `sarcastic` | 人设：`sarcastic` / `angry` / `tsundere` |
 | `MOCKINGBIRD_SPINNER` | ❌ | `正在思考怎么嘲讽你...` | 等待 AI 响应时的转圈文案，留空禁用 |
-| `MOCKINGBIRD_TIMEOUT` | ❌ | `3.0` | 请求超时（秒），超过即本地兜底 |
+| `MOCKINGBIRD_PAYLOAD` | ❌ | `{"thinking": {"type": "disabled"}}` | 自定义请求体 JSON，合并进 API 请求（可覆盖/新增字段） |
+| `MOCKINGBIRD_TIMEOUT` | ❌ | `6.0` | 请求超时（秒），超过即本地兜底 |
 
 配置完成后：
 

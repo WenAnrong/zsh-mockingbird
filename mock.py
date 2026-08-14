@@ -70,7 +70,7 @@ class Spinner:
         return False
 
 # --------------------------------------------------------------------------
-# 配置读取（直接读取 config.env 文件，不再依赖 shell export）
+# 配置读取（仅读取 config.env 文件）
 # --------------------------------------------------------------------------
 def load_config(path):
     """解析 config.env（KEY=VALUE 格式）为 dict。
@@ -97,14 +97,11 @@ def load_config(path):
 
 
 def read_config(config_path):
-    """合并配置：优先读 config.env 文件，环境变量仅作向后兼容兜底。"""
+    """读取 config.env 文件中的配置。"""
     file_cfg = load_config(config_path)
 
     def pick(key, default):
         val = file_cfg.get(key)
-        if val is not None and val.strip():
-            return val.strip()
-        val = os.environ.get(key)  # 兼容旧方式，非必需
         if val is not None and val.strip():
             return val.strip()
         return default
@@ -116,9 +113,15 @@ def read_config(config_path):
     cfg["tone"] = pick("MOCKINGBIRD_TONE", "sarcastic")
     cfg["spinner"] = pick("MOCKINGBIRD_SPINNER", "正在思考怎么嘲讽你...")
     try:
-        cfg["timeout"] = float(pick("MOCKINGBIRD_TIMEOUT", "3.0"))
+        cfg["timeout"] = float(pick("MOCKINGBIRD_TIMEOUT", "6.0"))
     except (TypeError, ValueError):
-        cfg["timeout"] = 3.0
+        cfg["timeout"] = 6.0
+    raw_payload = pick("MOCKINGBIRD_PAYLOAD", "")
+    try:
+        extra = json.loads(raw_payload) if raw_payload else {}
+    except (json.JSONDecodeError, TypeError):
+        extra = {}
+    cfg["payload"] = extra if isinstance(extra, dict) else {}
     return cfg
 
 # --------------------------------------------------------------------------
@@ -205,6 +208,9 @@ def call_api(messages, cfg):
         "temperature": 0.9,
         "max_tokens": 400,
     }
+    extra = cfg.get("payload") or {}
+    if isinstance(extra, dict):
+        payload.update(extra)
     req = urllib.request.Request(
         cfg["api_url"],
         data=json.dumps(payload).encode("utf-8"),
@@ -234,11 +240,7 @@ def split_suggestion(text):
 
 
 def render(body, suggestion, source="AI"):
-    """Aif cfg["spinner"]:
-            with Spinner(cfg["spinner"]):
-                text = call_api(messages, cfg)
-        else:
-            NSI 彩色终端渲染：红色标头 + 黄色正文 + 青色建议。
+    """ANSI 彩色终端渲染：红色标头 + 黄色正文 + 青色建议。
 
     source 为 "AI" 时表示来自大模型，否则显示"本地"（本地兜底语录）。
     """
@@ -273,7 +275,7 @@ def main(argv):
         return 0
     cmd = rest[0]
     args = list(rest[1:])
-    cwd = ns.cwd or os.environ.get("MOCKINGBIRD_CWD") or os.getcwd()
+    cwd = ns.cwd or os.getcwd()
 
     cfg = read_config(ns.config)
 
