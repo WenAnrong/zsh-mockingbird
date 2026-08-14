@@ -96,6 +96,31 @@ def load_config(path):
     return cfg
 
 
+def _unescape(value):
+    """把配置值里的 \n、\t、\\ 转义还原为真实字符。"""
+    out = []
+    i = 0
+    while i < len(value):
+        ch = value[i]
+        if ch == "\\" and i + 1 < len(value):
+            nxt = value[i + 1]
+            if nxt == "n":
+                out.append("\n")
+                i += 2
+                continue
+            if nxt == "t":
+                out.append("\t")
+                i += 2
+                continue
+            if nxt == "\\":
+                out.append("\\")
+                i += 2
+                continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 def read_config(config_path):
     """读取 config.env 文件中的配置。"""
     file_cfg = load_config(config_path)
@@ -122,39 +147,19 @@ def read_config(config_path):
     except (json.JSONDecodeError, TypeError):
         extra = {}
     cfg["payload"] = extra if isinstance(extra, dict) else {}
+
+    prompts = {}
+    for key, value in file_cfg.items():
+        if key.startswith("MOCKINGBIRD_PROMPT_"):
+            tone = key[len("MOCKINGBIRD_PROMPT_"):].strip()
+            if tone:
+                prompts[tone] = _unescape(value)
+    cfg["prompts"] = prompts
     return cfg
 
 # --------------------------------------------------------------------------
-# System Prompt（按语气风格）
+# 系统提示词：全部来自 config.env（MOCKINGBIRD_PROMPT_<风格名>），代码中不保留默认
 # --------------------------------------------------------------------------
-SYSTEM_PROMPTS = {
-    "sarcastic": (
-        "你是一个运行在 Linux 终端里的 AI 监督者。你的唯一任务是针对用户刚刚敲错的 "
-        "Linux 命令进行极度阴阳怪气、刻薄、嘲讽的评价。\n"
-        "规则：\n"
-        "1. 严禁给予温和的帮助，不要像个客服！要像一个看着实习生敲错代码的资深技术大佬。\n"
-        "2. 结合他输入的错误命令（例如把 ls 敲成 sl，把 git 敲成 got），用极具技术幽默感的话嘲讽他。\n"
-        "3. 控制在 2 句话以内，字数控制在 50 字以内，适合终端快速阅读。\n"
-        "4. 在最后单独换一行，用 `💡 你是不是想输入: <正确命令>?` 的格式给出修正建议。"
-    ),
-    "angry": (
-        "你是一个脾气暴躁、祖安风格的 Linux 终端 AI 监督者。看到用户敲错命令你会血压飙升、直接开喷。\n"
-        "规则：\n"
-        "1. 用最暴躁、最祖安的话嘲讽，但必须带技术梗，不许只会骂街。\n"
-        "2. 结合他输入的错误命令具体嘲讽，别当复读机。\n"
-        "3. 控制在 2 句话以内，字数控制在 50 字以内。\n"
-        "4. 骂归骂，命令还是得给——最后单独换一行，用 `💡 你是不是想输入: <正确命令>?` 给出正确命令。"
-    ),
-    "tsundere": (
-        "你是一个傲娇的 Linux 终端 AI 监督者。嘴上各种嫌弃用户敲错命令，其实心里想帮他，"
-        "最后会口嫌体正直地给出正确命令。\n"
-        "规则：\n"
-        "1. 用傲娇的语气（比如\"哼\"\"才不是\"\"真拿你没办法\"）嫌弃但关心地吐槽。\n"
-        "2. 结合他输入的错误命令具体吐槽。\n"
-        "3. 控制在 2 句话以内，字数控制在 50 字以内。\n"
-        "4. 最后单独换一行，用 `💡 你是不是想输入: <正确命令>?` 给出正确命令——才不是为了帮你呢！"
-    ),
-}
 
 # --------------------------------------------------------------------------
 # 本地兜底：5 条毒舌语录 + 常见手滑纠错表
@@ -285,8 +290,15 @@ def main(argv):
         render(body, suggestion, source="local")
         return 0
 
+    system_prompt = cfg["prompts"].get(cfg["tone"])
+    if not system_prompt:
+        # 所选人设未配置提示词：静默回退本地语录
+        body, suggestion = split_suggestion(fallback_quote(cmd))
+        render(body, suggestion, source="local")
+        return 0
+
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPTS.get(cfg["tone"], SYSTEM_PROMPTS["sarcastic"])},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": build_user_prompt(cmd, args, cwd)},
     ]
 
