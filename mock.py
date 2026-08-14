@@ -148,6 +148,13 @@ def read_config(config_path):
         extra = {}
     cfg["payload"] = extra if isinstance(extra, dict) else {}
 
+    raw_quotes = pick("MOCKINGBIRD_FALLBACK_QUOTES", "")
+    try:
+        quotes = json.loads(raw_quotes) if raw_quotes else []
+    except (json.JSONDecodeError, TypeError):
+        quotes = []
+    cfg["fallback_quotes"] = [q for q in quotes if isinstance(q, str) and q.strip()]
+
     prompts = {}
     for key, value in file_cfg.items():
         if key.startswith("MOCKINGBIRD_PROMPT_"):
@@ -158,7 +165,7 @@ def read_config(config_path):
     return cfg
 
 # --------------------------------------------------------------------------
-# 本地兜底：5 条毒舌语录 + 常见手滑纠错表
+# 本地兜底：常见手滑纠错表 + 语录
 # --------------------------------------------------------------------------
 COMMON_TYPOS = {
     "sl": "ls",
@@ -181,13 +188,7 @@ COMMON_TYPOS = {
     "gitpuh": "git push",
 }
 
-FALLBACK_QUOTES = [
-    "佩服，能把 `{cmd}` 敲成这样也是一种天赋，建议去隔壁学学打字。",
-    "`{cmd}` 是什么新命令？你自己发明的吧，反正 Linux 不认识你。",
-    "手滑程度堪比在婚礼上喊出前任的名字，冷静点，重来。",
-    "这台终端从未出现过 `{cmd}`，以后也不会有。建议先 man 一下自己的脑子。",
-    "`{cmd}` —— 系统查无此令。你确定不是来砸场子的？",
-]
+# 本地兜底语录：全部来自 config.env（MOCKINGBIRD_FALLBACK_QUOTES），代码中仅保留一条保底
 
 
 def build_user_prompt(cmd, args, cwd):
@@ -255,10 +256,13 @@ def render(body, suggestion, source="AI"):
     sys.stdout.flush()
 
 
-def fallback_quote(cmd):
-    """本地兜底：随机一条毒舌语录，若能识别手滑则附带建议。"""
+def fallback_quote(cmd, quotes):
+    """本地兜底：随机一条语录，若能识别手滑则附带建议。"""
     suggestion = COMMON_TYPOS.get(cmd)
-    quote = random.choice(FALLBACK_QUOTES).format(cmd=cmd)
+    if quotes:
+        quote = random.choice(quotes).replace("{cmd}", cmd)
+    else:
+        quote = f"`{cmd}` 这条命令不存在，建议检查拼写。"
     if suggestion:
         quote += f"\n💡 你是不是想输入: {suggestion}?"
     return quote
@@ -282,14 +286,14 @@ def main(argv):
 
     # 未配置 API Key 或完整地址：直接本地兜底，不打扰用户
     if not cfg["api_key"] or not cfg["api_url"]:
-        body, suggestion = split_suggestion(fallback_quote(cmd))
+        body, suggestion = split_suggestion(fallback_quote(cmd, cfg["fallback_quotes"]))
         render(body, suggestion, source="local")
         return 0
 
     system_prompt = cfg["prompts"].get(cfg["tone"])
     if not system_prompt:
         # 所选人设未配置提示词：静默回退本地语录
-        body, suggestion = split_suggestion(fallback_quote(cmd))
+        body, suggestion = split_suggestion(fallback_quote(cmd, cfg["fallback_quotes"]))
         render(body, suggestion, source="local")
         return 0
 
@@ -315,7 +319,7 @@ def main(argv):
         render(body, suggestion)
     except Exception:
         # 超时 / 断网 / HTTP 错误 / 解析失败：静默回退本地语录
-        body, suggestion = split_suggestion(fallback_quote(cmd))
+        body, suggestion = split_suggestion(fallback_quote(cmd, cfg["fallback_quotes"]))
         render(body, suggestion, source="local")
     return 0
 
