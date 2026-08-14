@@ -154,7 +154,7 @@ def call_api(messages, cfg):
         "messages": messages,
         "stream": cfg["stream"],
         "temperature": 0.9,
-        "max_tokens": 200,
+        "max_tokens": 400,
     }
     req = urllib.request.Request(
         cfg["api_url"],
