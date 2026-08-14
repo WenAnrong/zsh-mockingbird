@@ -9,6 +9,7 @@ import json
 import os
 import random
 import sys
+import threading
 import urllib.request
 
 # --------------------------------------------------------------------------
@@ -18,6 +19,55 @@ RESET = "\033[0m"
 BOLD_RED = "\033[1;31m"  # 标头：红色粗体
 YELLOW = "\033[0;33m"    # AI 回复：黄色
 CYAN = "\033[0;36m"      # 建议命令：青色
+
+# 转圈动画（等待 AI 响应期间显示）
+# --------------------------------------------------------------------------
+SPINNER_FRAMES_UTF8 = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+SPINNER_FRAMES_ASCII = ["|", "/", "-", "\\"]
+
+
+def spinner_frames():
+    """按 stdout 编码选择转圈字符：UTF-8 用 Braille 点阵，否则回退 ASCII。"""
+    enc = (sys.stdout.encoding or "").lower()
+    return SPINNER_FRAMES_UTF8 if "utf" in enc else SPINNER_FRAMES_ASCII
+
+
+def _display_width(text):
+    """估算终端显示宽度：ASCII 算 1 列，其余（中文/emoji）算 2 列。"""
+    return sum(2 if ord(ch) > 127 else 1 for ch in text)
+
+
+class Spinner:
+    """等待期间在终端显示转圈动画，结束时清除该行。"""
+
+    def __init__(self, message):
+        self.message = message
+        self._stop = threading.Event()
+        self._thread = None
+
+    def _run(self):
+        frames = spinner_frames()
+        i = 0
+        while not self._stop.is_set():
+            sys.stdout.write("\r{} {}".format(frames[i % len(frames)], self.message))
+            sys.stdout.flush()
+            self._stop.wait(0.08)
+            i += 1
+        # 清空整行，避免残留
+        sys.stdout.write("\r" + " " * (_display_width(self.message) + 4) + "\r")
+        sys.stdout.flush()
+
+    def __enter__(self):
+        if sys.stdout.isatty():  # 只在真实终端转圈，管道输出时静默
+            self._thread = threading.Thread(target=self._run, daemon=True)
+            self._thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        if self._thread is not None:
+            self._stop.set()
+            self._thread.join()
+        return False
 
 # --------------------------------------------------------------------------
 # 配置读取（直接读取 config.env 文件，不再依赖 shell export）
@@ -64,7 +114,7 @@ def read_config(config_path):
     cfg["api_url"] = pick("MOCKINGBIRD_API_URL", "").rstrip("/")
     cfg["model"] = pick("MOCKINGBIRD_MODEL", "")
     cfg["tone"] = pick("MOCKINGBIRD_TONE", "sarcastic")
-    cfg["stream"] = pick("MOCKINGBIRD_STREAM", "0") == "1"
+    cfg["spinner"] = pick("MOCKINGBIRD_SPINNER", "正在思考怎么嘲讽你...")
     try:
         cfg["timeout"] = float(pick("MOCKINGBIRD_TIMEOUT", "3.0"))
     except (TypeError, ValueError):
@@ -152,7 +202,6 @@ def call_api(messages, cfg):
     payload = {
         "model": cfg["model"],
         "messages": messages,
-        "stream": cfg["stream"],
         "temperature": 0.9,
         "max_tokens": 400,
     }
@@ -166,29 +215,8 @@ def call_api(messages, cfg):
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=cfg["timeout"]) as resp:
-        if cfg["stream"]:
-            return _parse_stream(resp)
         data = json.loads(resp.read().decode("utf-8"))
     return data["choices"][0]["message"]["content"].strip()
-
-
-def _parse_stream(resp):
-    """解析 SSE 流式响应（data: ... 行），合并为完整文本。"""
-    parts = []
-    for raw in resp:
-        line = raw.decode("utf-8", errors="ignore").strip()
-        if not line.startswith("data:"):
-            continue
-        chunk = line[len("data:"):].strip()
-        if chunk == "[DONE]":
-            break
-        try:
-            delta = json.loads(chunk)["choices"][0].get("delta", {}).get("content", "")
-        except (json.JSONDecodeError, KeyError, IndexError):
-            continue
-        if delta:
-            parts.append(delta)
-    return "".join(parts).strip()
 
 
 def split_suggestion(text):
@@ -206,7 +234,11 @@ def split_suggestion(text):
 
 
 def render(body, suggestion, source="AI"):
-    """ANSI 彩色终端渲染：红色标头 + 黄色正文 + 青色建议。
+    """Aif cfg["spinner"]:
+            with Spinner(cfg["spinner"]):
+                text = call_api(messages, cfg)
+        else:
+            NSI 彩色终端渲染：红色标头 + 黄色正文 + 青色建议。
 
     source 为 "AI" 时表示来自大模型，否则显示"本地"（本地兜底语录）。
     """
@@ -257,7 +289,11 @@ def main(argv):
     ]
 
     try:
-        text = call_api(messages, cfg)
+        if cfg["spinner"]:
+            with Spinner(cfg["spinner"]):
+                text = call_api(messages, cfg)
+        else:
+            text = call_api(messages, cfg)
         if not text:
             raise RuntimeError("empty response")
         body, suggestion = split_suggestion(text)
