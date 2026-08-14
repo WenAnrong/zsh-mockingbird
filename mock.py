@@ -4,6 +4,7 @@
 zsh-mockingbird / mock.py
 """
 
+import argparse
 import json
 import os
 import random
@@ -19,27 +20,56 @@ YELLOW = "\033[0;33m"    # AI 回复：黄色
 CYAN = "\033[0;36m"      # 建议命令：青色
 
 # --------------------------------------------------------------------------
-# 配置读取（环境变量）
+# 配置读取（直接读取 config.env 文件，不再依赖 shell export）
 # --------------------------------------------------------------------------
-def get_env(name, default=None):
-    """读取环境变量，空白值视为未设置。"""
-    val = os.environ.get(name)
-    if val is None:
+def load_config(path):
+    """解析 config.env（KEY=VALUE 格式）为 dict。
+
+    自动忽略注释行、空行，并去掉值两侧可选的双引号/单引号。
+    文件不存在时返回空 dict，不报错。
+    """
+    cfg = {}
+    if not path or not os.path.isfile(path):
+        return cfg
+    with open(path, "r", encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+                value = value[1:-1]
+            if key:
+                cfg[key] = value
+    return cfg
+
+
+def read_config(config_path):
+    """合并配置：优先读 config.env 文件，环境变量仅作向后兼容兜底。"""
+    file_cfg = load_config(config_path)
+
+    def pick(key, default):
+        val = file_cfg.get(key)
+        if val is not None and val.strip():
+            return val.strip()
+        val = os.environ.get(key)  # 兼容旧方式，非必需
+        if val is not None and val.strip():
+            return val.strip()
         return default
-    val = val.strip()
-    return val if val else default
 
-
-API_KEY = get_env("MOCKINGBIRD_API_KEY", "")
-# 完整请求地址
-API_URL = get_env("MOCKINGBIRD_API_URL", "").rstrip("/")
-MODEL = get_env("MOCKINGBIRD_MODEL", "")
-TONE = get_env("MOCKINGBIRD_TONE", "sarcastic")
-STREAM = get_env("MOCKINGBIRD_STREAM", "0") == "1"
-try:
-    TIMEOUT = float(get_env("MOCKINGBIRD_TIMEOUT", "3.0"))
-except (TypeError, ValueError):
-    TIMEOUT = 3.0
+    cfg = {}
+    cfg["api_key"] = pick("MOCKINGBIRD_API_KEY", "")
+    cfg["api_url"] = pick("MOCKINGBIRD_API_URL", "").rstrip("/")
+    cfg["model"] = pick("MOCKINGBIRD_MODEL", "")
+    cfg["tone"] = pick("MOCKINGBIRD_TONE", "sarcastic")
+    cfg["stream"] = pick("MOCKINGBIRD_STREAM", "0") == "1"
+    try:
+        cfg["timeout"] = float(pick("MOCKINGBIRD_TIMEOUT", "3.0"))
+    except (TypeError, ValueError):
+        cfg["timeout"] = 3.0
+    return cfg
 
 # --------------------------------------------------------------------------
 # System Prompt（按语气风格）
@@ -117,27 +147,26 @@ def build_user_prompt(cmd, args, cwd):
     return "\n".join(lines)
 
 
-def call_api(messages):
+def call_api(messages, cfg):
     """发起 OpenAI 兼容的请求，返回回复文本。"""
-    url = API_URL
     payload = {
-        "model": MODEL,
+        "model": cfg["model"],
         "messages": messages,
-        "stream": STREAM,
+        "stream": cfg["stream"],
         "temperature": 0.9,
         "max_tokens": 200,
     }
     req = urllib.request.Request(
-        url,
+        cfg["api_url"],
         data=json.dumps(payload).encode("utf-8"),
         headers={
             "Content-Type": "application/json",
-            "Authorization": "Bearer " + API_KEY,
+            "Authorization": "Bearer " + cfg["api_key"],
         },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-        if STREAM:
+    with urllib.request.urlopen(req, timeout=cfg["timeout"]) as resp:
+        if cfg["stream"]:
             return _parse_stream(resp)
         data = json.loads(resp.read().decode("utf-8"))
     return data["choices"][0]["message"]["content"].strip()
@@ -197,25 +226,34 @@ def fallback_quote(cmd):
 
 
 def main(argv):
-    if not argv:
+    parser = argparse.ArgumentParser(add_help=False, prog="mock.py")
+    parser.add_argument("--config", default="", help="config.env 文件路径")
+    parser.add_argument("--cwd", default="", help="命令执行时的工作目录")
+    parser.add_argument("rest", nargs="*")
+    ns = parser.parse_args(argv)
+
+    rest = ns.rest
+    if not rest:
         return 0
-    cmd = argv[0]
-    args = list(argv[1:])
-    cwd = os.environ.get("MOCKINGBIRD_CWD") or os.getcwd()
+    cmd = rest[0]
+    args = list(rest[1:])
+    cwd = ns.cwd or os.environ.get("MOCKINGBIRD_CWD") or os.getcwd()
+
+    cfg = read_config(ns.config)
 
     # 未配置 API Key 或完整地址：直接本地兜底，不打扰用户
-    if not API_KEY or not API_URL:
+    if not cfg["api_key"] or not cfg["api_url"]:
         body, suggestion = split_suggestion(fallback_quote(cmd))
         render(body, suggestion)
         return 0
 
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPTS.get(TONE, SYSTEM_PROMPTS["sarcastic"])},
+        {"role": "system", "content": SYSTEM_PROMPTS.get(cfg["tone"], SYSTEM_PROMPTS["sarcastic"])},
         {"role": "user", "content": build_user_prompt(cmd, args, cwd)},
     ]
 
     try:
-        text = call_api(messages)
+        text = call_api(messages, cfg)
         if not text:
             raise RuntimeError("empty response")
         body, suggestion = split_suggestion(text)

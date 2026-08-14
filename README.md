@@ -3,16 +3,14 @@
 > 一个会**阴阳怪气地嘲讽你敲错命令**的 Zsh 插件。
 > 当你手滑把 `ls` 敲成 `sl`、把 `git` 敲成 `got` 时，它会调用大模型 API，以极度毒舌但又充满技术幽默感的口吻怼你一句，并顺手把正确的命令甩给你。
 
-![Zsh](https://img.shields.io/badge/shell-Zsh-blue) ![Python](https://img.shields.io/badge/python-3.6%2B-green) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
-
 ---
 
 ## ✨ 特性
 
-- 🧠 **AI 嘲讽**：兼容 OpenAI 格式的 LLM API（DeepSeek / 阿里云百炼 Qwen / Moonshot 等均可）
+- 🧠 **AI 嘲讽**：兼容 OpenAI 格式的 LLM API（DeepSeek / 阿里云百炼 等均可）
 - 🗣️ **三种人设**：`sarcastic` 阴阳怪气（默认）/ `angry` 祖安暴躁 / `tsundere` 傲娇
 - ⚡ **同步执行**：嘲讽直接出现在提示符之前
-- 🚫 **零依赖**：`mock.py` 仅用 Python 3 标准库（`urllib.request`），**不需要** `pip install openai`
+- 🚫 **零依赖**：`mock.py` 仅用 Python 3 标准库（`urllib.request`）
 - 🔒 **永不报错**：请求超时（默认 3 秒）/ 断网 / 未配置 Key 时，静默回退到本地 5 条毒舌语录
 - 🎨 **彩色渲染**：ANSI 转义码输出（红色标头 + 黄色正文 + 青色建议）
 - 📦 **即插即用**：直接放进 Oh My Zsh `custom/plugins` 即可加载
@@ -56,6 +54,8 @@ zsh-mockingbird/
 
 ### 方式一：git clone 安装（推荐，Oh My Zsh）
 
+确保你已经安装了 [Oh My Zsh](https://github.com/ohmyzsh/ohmyzsh)。
+
 直接克隆到自定义插件目录：
 
 ```bash
@@ -76,6 +76,8 @@ source ~/.zshrc
 
 ### 方式二：手动拷贝文件（没有 git 环境）
 
+确保你已经安装了 [Oh My Zsh](https://github.com/ohmyzsh/ohmyzsh)。
+
 ```bash
 mkdir -p ~/.oh-my-zsh/custom/plugins/zsh-mockingbird
 
@@ -85,6 +87,8 @@ cp zsh-mockingbird.plugin.zsh mock.py config.env.example ~/.oh-my-zsh/custom/plu
 然后同上，在 `~/.zshrc` 的 `plugins=(...)` 中加入 `zsh-mockingbird`，再 `source ~/.zshrc`。
 
 ### 方式三：手动 source（不使用 Oh My Zsh）
+
+普通 Zsh 用户可以直接 source 插件文件。
 
 把仓库放到任意位置，在 `~/.zshrc` 末尾追加：
 
@@ -120,6 +124,7 @@ vim config.env
 ```bash
 source ~/.zshrc
 ```
+或者退出终端重新打开。
 
 ---
 
@@ -178,14 +183,3 @@ source ~/.zshrc
 **Q：和别的 `command_not_found_handler` 冲突？**
 本插件会覆盖已有处理器。如果同时装了其他同类插件，建议只保留一个。
 
----
-
-## 📝 说明
-
-- `mock.py` 仅依赖 Python 3 标准库，零第三方依赖，开箱即用。
-- System Prompt 强制约束 AI：**2 句话以内、50 字以内、最后单独一行给出 `💡 你是不是想输入: ...?` 建议**，确保终端阅读体验。
-- 请求失败或超时时自动回退本地语录，**绝不阻塞用户终端、绝不抛出异常栈**。
-
-## 📄 License
-
-MIT License
