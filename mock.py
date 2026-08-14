@@ -205,9 +205,13 @@ def split_suggestion(text):
     return "\n".join(body_lines).strip(), suggestion
 
 
-def render(body, suggestion):
-    """ANSI 彩色终端渲染：红色标头 + 黄色正文 + 青色建议。"""
-    out = [f"{BOLD_RED}[Mockingbird AI 警告]{RESET}"]
+def render(body, suggestion, source="AI"):
+    """ANSI 彩色终端渲染：红色标头 + 黄色正文 + 青色建议。
+
+    source 为 "AI" 时表示来自大模型，否则显示"本地"（本地兜底语录）。
+    """
+    label = "AI" if source == "AI" else "本地"
+    out = [f"{BOLD_RED}[Mockingbird {label} 警告]{RESET}"]
     if body:
         out.append(f"{YELLOW}{body}{RESET}")
     if suggestion:
@@ -244,7 +248,7 @@ def main(argv):
     # 未配置 API Key 或完整地址：直接本地兜底，不打扰用户
     if not cfg["api_key"] or not cfg["api_url"]:
         body, suggestion = split_suggestion(fallback_quote(cmd))
-        render(body, suggestion)
+        render(body, suggestion, source="local")
         return 0
 
     messages = [
@@ -266,7 +270,7 @@ def main(argv):
     except Exception:
         # 超时 / 断网 / HTTP 错误 / 解析失败：静默回退本地语录
         body, suggestion = split_suggestion(fallback_quote(cmd))
-        render(body, suggestion)
+        render(body, suggestion, source="local")
     return 0
 
 
